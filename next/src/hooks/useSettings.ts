@@ -6,6 +6,8 @@ import {
   DEFAULT_MAX_LOOPS_FREE,
   GPT_35_TURBO,
 } from "../utils/constants";
+import { findLanguage } from "../utils/languages";
+import { useTranslation } from "next-i18next";
 
 const SETTINGS_KEY = "AGENTGPT_SETTINGS";
 const DEFAULT_SETTINGS: ModelSettings = {
@@ -49,6 +51,7 @@ const loadSettings = () => {
 };
 
 export function useSettings(): SettingModel {
+  const { i18n } = useTranslation();
   const [settings, setSettings] = useState<ModelSettings>(loadSettings);
 
   const saveSettings = (settings: ModelSettings) => {
@@ -64,7 +67,10 @@ export function useSettings(): SettingModel {
   };
 
   return {
-    settings,
+    settings: {
+      ...settings,
+      language: findLanguage(i18n.language).name,
+    },
     saveSettings,
     resetSettings,
   };

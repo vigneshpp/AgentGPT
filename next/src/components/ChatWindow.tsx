@@ -1,45 +1,39 @@
 import type { ReactNode } from "react";
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "next-i18next";
-import { FaClipboard, FaImage, FaPause, FaPlay, FaSave } from "react-icons/fa";
+import { FaClipboard, FaImage, FaSave } from "react-icons/fa";
 import PopIn from "./motions/popin";
 import Expand from "./motions/expand";
 import * as htmlToImage from "html-to-image";
 import WindowButton from "./WindowButton";
-import PDFButton from "./pdf/PDFButton";
 import FadeIn from "./motions/FadeIn";
 import Menu from "./Menu";
 import type { Message } from "../types/agentTypes";
 import {
-  AUTOMATIC_MODE,
   getTaskStatus,
-  isAction,
   MESSAGE_TYPE_GOAL,
   MESSAGE_TYPE_SYSTEM,
   MESSAGE_TYPE_THINKING,
-  PAUSE_MODE,
   TASK_STATUS_COMPLETED,
   TASK_STATUS_EXECUTING,
   TASK_STATUS_FINAL,
   TASK_STATUS_STARTED,
 } from "../types/agentTypes";
 import clsx from "clsx";
-import { getMessageContainerStyle, getTaskStatusIcon } from "./utils/helpers";
-import { useAgentStore } from "../stores";
+import { getMessageContainerStyle } from "./utils/helpers";
 import { AnimatePresence } from "framer-motion";
 import { CgExport } from "react-icons/cg";
-import MarkdownRenderer from "./MarkdownRenderer";
-import { Switch } from "./Switch";
+import { AgentTask } from "../services/agent/autonomous-agent";
 
 interface ChatWindowProps extends HeaderProps {
   children?: ReactNode;
   className?: string;
   fullscreen?: boolean;
   scrollToBottom?: boolean;
-  displaySettings?: boolean; // Controls if settings are displayed at the bottom of the ChatWindow
   openSorryDialog?: () => void;
   setAgentRun?: (name: string, goal: string) => void;
   visibleOnMobile?: boolean;
+  messages: AgentTask[];
 }
 
 const messageListId = "chat-window-message-list";
@@ -52,7 +46,6 @@ const ChatWindow = ({
   onSave,
   fullscreen,
   scrollToBottom,
-  displaySettings,
   openSorryDialog,
   setAgentRun,
   visibleOnMobile,
@@ -61,10 +54,6 @@ const ChatWindow = ({
   const [hasUserScrolled, setHasUserScrolled] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isAgentPaused = useAgentStore.use.isAgentPaused();
-  const agentMode = useAgentStore.use.agentMode();
-  const agent = useAgentStore.use.agent();
-  const updateAgentMode = useAgentStore.use.updateAgentMode();
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
@@ -82,10 +71,6 @@ const ChatWindow = ({
       }
     }
   });
-
-  const handleUpdateAgentMode = (value: boolean) => {
-    updateAgentMode(value ? PAUSE_MODE : AUTOMATIC_MODE);
-  };
 
   return (
     <div
@@ -105,19 +90,13 @@ const ChatWindow = ({
         onScroll={handleScroll}
         id={messageListId}
       >
-        {agent !== null && agentMode === PAUSE_MODE && isAgentPaused && (
-          <FaPause className="animation-hide absolute left-1/2 top-1/2 text-lg md:text-3xl" />
-        )}
-        {agent !== null && agentMode === PAUSE_MODE && !isAgentPaused && (
-          <FaPlay className="animation-hide absolute left-1/2 top-1/2 text-lg md:text-3xl" />
-        )}
         {messages.map((message, index) => {
           if (getTaskStatus(message) === TASK_STATUS_EXECUTING) {
             return null;
           }
 
           return (
-            <FadeIn key={`${index}-${message.type}`}>
+            <FadeIn key={message.id}>
               <ChatMessage message={message} />
             </FadeIn>
           );
@@ -150,17 +129,6 @@ const ChatWindow = ({
           </>
         )}
       </div>
-      {displaySettings && (
-        <div className="flex flex-row items-center justify-center">
-          <SwitchContainer label={PAUSE_MODE}>
-            <Switch
-              disabled={agent !== null}
-              value={agentMode === PAUSE_MODE}
-              onChange={handleUpdateAgentMode}
-            />
-          </SwitchContainer>
-        </div>
-      )}
     </div>
   );
 };
@@ -206,15 +174,12 @@ const ExampleAgentButton = ({
 
 interface HeaderProps {
   title?: string | ReactNode;
-  messages: Message[];
   onSave?: (format: string) => void;
 }
 
 const MacWindowHeader = (props: HeaderProps) => {
   const [t] = useTranslation();
-  const isAgentPaused = useAgentStore.use.isAgentPaused();
-  const agent = useAgentStore.use.agent();
-  const agentMode = useAgentStore.use.agentMode();
+
   const saveElementAsImage = (elementId: string) => {
     const element = document.getElementById(elementId);
     if (!element) {
@@ -283,7 +248,7 @@ const MacWindowHeader = (props: HeaderProps) => {
       icon={<FaClipboard size={12} />}
       name={`${t("COPY", { ns: "common" })}`}
     />,
-    <PDFButton key="PDF" name="PDF" messages={props.messages} />,
+    // <PDFButton key="PDF" name="PDF" messages={props.messages} />,
   ];
 
   return (
@@ -304,24 +269,6 @@ const MacWindowHeader = (props: HeaderProps) => {
         {props.title}
       </Expand>
 
-      {agentMode === PAUSE_MODE && agent !== null && (
-        <div
-          className={`animation-duration text-gray/50 flex items-center gap-2 px-2 py-1 text-left font-mono text-sm font-bold transition-all sm:py-0.5`}
-        >
-          {isAgentPaused ? (
-            <>
-              <FaPause />
-              <p className="font-mono">{`${t("PAUSED", { ns: "common" })}`}</p>
-            </>
-          ) : (
-            <>
-              <FaPlay />
-              <p className="font-mono">{`${t("RUNNING", { ns: "common" })}`}</p>
-            </>
-          )}
-        </div>
-      )}
-
       <AnimatePresence>
         {props.onSave && (
           <PopIn>
@@ -341,7 +288,7 @@ const MacWindowHeader = (props: HeaderProps) => {
     </div>
   );
 };
-const ChatMessage = ({ message }: { message: Message }) => {
+const ChatMessage = ({ message }: { message: AgentTask }) => {
   const [t] = useTranslation();
 
   return (
@@ -352,40 +299,44 @@ const ChatMessage = ({ message }: { message: Message }) => {
         "sm:my-1.5 sm:text-sm"
       )}
     >
-      {message.type != MESSAGE_TYPE_SYSTEM && (
-        // Avoid for system messages as they do not have an icon and will cause a weird space
-        <>
-          <div className="mr-2 inline-block h-[0.9em]">{getTaskStatusIcon(message, {})}</div>
-          <span className="mr-2 font-bold">{t(getMessagePrefix(message), { ns: "chat" })}</span>
-        </>
-      )}
-
-      {message.type == MESSAGE_TYPE_THINKING && (
-        <span className="italic text-zinc-400">
-          {`${t("RESTART_IF_IT_TAKES_X_SEC", {
-            ns: "chat",
-          })}`}
-        </span>
-      )}
-
-      {isAction(message) ? (
-        <>
-          <hr className="my-2 border-[1px] border-white/20" />
-          <div className="prose">
-            <MarkdownRenderer>{message.info || ""}</MarkdownRenderer>
-          </div>
-        </>
-      ) : (
-        <>
-          <span>{t(message.value, { ns: "chat" })}</span>
-          {
-            // Link to the FAQ if it is a shutdown message
-            message.type == MESSAGE_TYPE_SYSTEM &&
-              (message.value.toLowerCase().includes("shut") ||
-                message.value.toLowerCase().includes("error")) && <FAQ />
-          }
-        </>
-      )}
+      {message.id}
+      <br />
+      Goal: {message.input}
+      <br />
+      Output: {message.output}
+      <br />
+      {/*{message.type != MESSAGE_TYPE_SYSTEM && (*/}
+      {/*  // Avoid for system messages as they do not have an icon and will cause a weird space*/}
+      {/*  <>*/}
+      {/*    <div className="mr-2 inline-block h-[0.9em]">{getTaskStatusIcon(message, {})}</div>*/}
+      {/*    <span className="mr-2 font-bold">{t(getMessagePrefix(message), { ns: "chat" })}</span>*/}
+      {/*  </>*/}
+      {/*)}*/}
+      {/*{message.type == MESSAGE_TYPE_THINKING && (*/}
+      {/*  <span className="italic text-zinc-400">*/}
+      {/*    {`${t("RESTART_IF_IT_TAKES_X_SEC", {*/}
+      {/*      ns: "chat",*/}
+      {/*    })}`}*/}
+      {/*  </span>*/}
+      {/*)}*/}
+      {/*{isAction(message) ? (*/}
+      {/*  <>*/}
+      {/*    <hr className="my-2 border-[1px] border-white/20" />*/}
+      {/*    <div className="prose">*/}
+      {/*      <MarkdownRenderer>{message.info || ""}</MarkdownRenderer>*/}
+      {/*    </div>*/}
+      {/*  </>*/}
+      {/*) : (*/}
+      {/*  <>*/}
+      {/*    <span>{t(message.value, { ns: "chat" })}</span>*/}
+      {/*    {*/}
+      {/*      // Link to the FAQ if it is a shutdown message*/}
+      {/*      message.type == MESSAGE_TYPE_SYSTEM &&*/}
+      {/*        (message.value.toLowerCase().includes("shut") ||*/}
+      {/*          message.value.toLowerCase().includes("error")) && <FAQ />*/}
+      {/*    }*/}
+      {/*  </>*/}
+      {/*)}*/}
     </div>
   );
 };

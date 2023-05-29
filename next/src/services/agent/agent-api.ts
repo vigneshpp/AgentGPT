@@ -8,11 +8,9 @@ type ApiProps = Pick<RequestBody, "modelSettings" | "goal">;
 
 export class AgentApi {
   readonly props: ApiProps;
-  readonly onError: (e: unknown) => never;
 
-  constructor(apiProps: ApiProps, onError: (e: unknown) => never) {
+  constructor(apiProps: ApiProps) {
     this.props = apiProps;
-    this.onError = onError;
   }
 
   async getInitialTasks(): Promise<string[]> {
@@ -60,10 +58,6 @@ export class AgentApi {
       ...data,
     };
 
-    try {
-      return (await axios.post(env.NEXT_PUBLIC_BACKEND_URL + url, requestBody)).data as T;
-    } catch (e) {
-      this.onError(e);
-    }
+    return (await axios.post(env.NEXT_PUBLIC_BACKEND_URL + url, requestBody)).data as T;
   }
 }

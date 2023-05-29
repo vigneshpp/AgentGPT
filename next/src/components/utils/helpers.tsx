@@ -1,38 +1,35 @@
 import {
   FaBrain,
+  FaCheckCircle,
   FaCircleNotch,
   FaRegCheckCircle,
-  FaCheckCircle,
   FaStar,
   FaStopCircle,
   FaThumbtack,
 } from "react-icons/fa";
+import type { Message } from "../../types/agentTypes";
 import {
-  isTask,
-  TASK_STATUS_STARTED,
-  TASK_STATUS_EXECUTING,
-  TASK_STATUS_COMPLETED,
-  TASK_STATUS_FINAL,
+  getTaskStatus,
   MESSAGE_TYPE_GOAL,
   MESSAGE_TYPE_THINKING,
-  getTaskStatus,
+  TASK_STATUS_COMPLETED,
+  TASK_STATUS_EXECUTING,
+  TASK_STATUS_FINAL,
+  TASK_STATUS_STARTED,
 } from "../../types/agentTypes";
+import type { AgentTask } from "../../services/agent/autonomous-agent";
 
-import type { Message } from "../../types/agentTypes";
-
-export const getMessageContainerStyle = (message: Message) => {
-  if (!isTask(message)) {
-    return "border-white/10 hover:border-white/40";
-  }
+export const getMessageContainerStyle = (message: AgentTask) => {
+  // if (!isTask(message)) {
+  //   return "border-white/10 hover:border-white/40";
+  // }
 
   switch (message.status) {
-    case TASK_STATUS_STARTED:
+    case "new":
       return "border-white/20 hover:border-white/40";
-    case TASK_STATUS_EXECUTING:
+    case "running":
       return "border-white/20 hover:border-white/40";
-    case TASK_STATUS_COMPLETED:
-      return "border-green-500 hover:border-green-400";
-    case TASK_STATUS_FINAL:
+    case "finished":
       return "border-green-500 hover:border-green-400";
     default:
       return "";
@@ -60,15 +57,11 @@ export const getTaskStatusIcon = (
     );
   } else if (getTaskStatus(message) === TASK_STATUS_COMPLETED) {
     return (
-      <FaRegCheckCircle
-        className={`${taskStatusIconClass} text-green-500 hover:text-green-400`}
-      />
+      <FaRegCheckCircle className={`${taskStatusIconClass} text-green-500 hover:text-green-400`} />
     );
   } else if (getTaskStatus(message) === TASK_STATUS_FINAL) {
     return (
-      <FaCheckCircle
-        className={`${taskStatusIconClass} text-green-500 hover:text-green-400`}
-      />
+      <FaCheckCircle className={`${taskStatusIconClass} text-green-500 hover:text-green-400`} />
     );
   }
 };

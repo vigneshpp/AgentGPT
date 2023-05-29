@@ -7,23 +7,21 @@ import ChatWindow from "../components/ChatWindow";
 import Drawer from "../components/Drawer";
 import Input from "../components/Input";
 import Button from "../components/Button";
-import { FaCog, FaPlay, FaRobot, FaStar } from "react-icons/fa";
+import { FaCog, FaRobot, FaStar } from "react-icons/fa";
 import PopIn from "../components/motions/popin";
 import { VscLoading } from "react-icons/vsc";
-import AutonomousAgent from "../services/agent/autonomous-agent";
 import Expand from "../components/motions/expand";
 import HelpDialog from "../components/HelpDialog";
 import { SettingsDialog } from "../components/SettingsDialog";
-import { TaskWindow } from "../components/TaskWindow";
 import { useAuth } from "../hooks/useAuth";
-import type { AgentPlaybackControl, Message } from "../types/agentTypes";
-import { AGENT_PLAY, isTask } from "../types/agentTypes";
+import type { Message } from "../types/agentTypes";
+import { isTask } from "../types/agentTypes";
 import { useAgent } from "../hooks/useAgent";
 import { isEmptyOrBlank } from "../utils/whitespace";
-import { resetAllMessageSlices, useAgentStore, useMessageStore } from "../stores";
+import { resetAllMessageSlices, useMessageStore } from "../stores";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useSettings } from "../hooks/useSettings";
-import { findLanguage, languages } from "../utils/languages";
+import { languages } from "../utils/languages";
 import nextI18NextConfig from "../../next-i18next.config.js";
 import { SorryDialog } from "../components/SorryDialog";
 import { SignInDialog } from "../components/SignInDialog";
@@ -32,24 +30,18 @@ import { ToolsDialog } from "../components/ToolsDialog";
 
 const Home: NextPage = () => {
   const { i18n } = useTranslation();
-  // Zustand states with state dependencies
+
   const addMessage = useMessageStore.use.addMessage();
   const messages = useMessageStore.use.messages();
   const updateTaskStatus = useMessageStore.use.updateTaskStatus();
+  const settingsModel = useSettings();
 
-  const setAgent = useAgentStore.use.setAgent();
-  const isAgentStopped = useAgentStore.use.isAgentStopped();
-  const isAgentPaused = useAgentStore.use.isAgentPaused();
-  const updateIsAgentPaused = useAgentStore.use.updateIsAgentPaused();
-  const updateIsAgentStopped = useAgentStore.use.updateIsAgentStopped();
-  const agentMode = useAgentStore.use.agentMode();
-  const agent = useAgentStore.use.agent();
+  const { agent, saveAgent, tasks, stopAgent, startAgent } = useAgent();
 
   const { session, status } = useAuth();
   const [nameInput, setNameInput] = React.useState<string>("");
   const [goalInput, setGoalInput] = React.useState<string>("");
   const [mobileVisibleWindow, setMobileVisibleWindow] = React.useState<"Chat" | "Tasks">("Chat");
-  const settingsModel = useSettings();
 
   const [showHelpDialog, setShowHelpDialog] = React.useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = React.useState(false);
@@ -59,10 +51,13 @@ const Home: NextPage = () => {
   const [hasSaved, setHasSaved] = React.useState(false);
   const agentUtils = useAgent();
 
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const key = "agentgpt-modal-opened-v0.2";
     const savedModalData = localStorage.getItem(key);
 
+    // TODO: clear timeout on unmount
     setTimeout(() => {
       if (savedModalData == null) {
         setShowHelpDialog(true);
@@ -70,16 +65,8 @@ const Home: NextPage = () => {
     }, 1800);
 
     localStorage.setItem(key, JSON.stringify(true));
-  }, []);
-
-  const nameInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
     nameInputRef?.current?.focus();
   }, []);
-
-  useEffect(() => {
-    updateIsAgentStopped();
-  }, [agent, updateIsAgentStopped]);
 
   const setAgentRun = (newName: string, newGoal: string) => {
     if (agent != null) {
@@ -99,12 +86,6 @@ const Home: NextPage = () => {
     addMessage(message);
   };
 
-  const handlePause = (opts: { agentPlaybackControl?: AgentPlaybackControl }) => {
-    if (opts.agentPlaybackControl !== undefined) {
-      updateIsAgentPaused(opts.agentPlaybackControl);
-    }
-  };
-
   const disableDeployAgent =
     agent != null || isEmptyOrBlank(nameInput) || isEmptyOrBlank(goalInput);
 
@@ -119,51 +100,20 @@ const Home: NextPage = () => {
       return;
     }
 
-    const newAgent = new AutonomousAgent(
-      name.trim(),
-      goal.trim(),
-      handleAddMessage,
-      handlePause,
-      () => setAgent(null),
-      {
-        language: findLanguage(i18n.language).name,
-        ...settingsModel.settings,
-      },
-      agentMode,
-      session ?? undefined
-    );
-    setAgent(newAgent);
+    startAgent({ goal, name, settings: settingsModel.settings })
+      .then(console.log)
+      .catch(console.error);
+
     setHasSaved(false);
     resetAllMessageSlices();
-    newAgent?.run().then(console.log).catch(console.error);
   };
-
-  const handleContinue = () => {
-    if (!agent) {
-      return;
-    }
-
-    agent.updatePlayBackControl(AGENT_PLAY);
-    updateIsAgentPaused(agent.playbackControl);
-    agent.updateIsRunning(true);
-    agent.run().then(console.log).catch(console.error);
-  };
-
   const handleKeyPress = (
     e: React.KeyboardEvent<HTMLInputElement> | React.KeyboardEvent<HTMLTextAreaElement>
   ) => {
     // Only Enter is pressed, execute the function
     if (e.key === "Enter" && !disableDeployAgent && !e.shiftKey) {
-      if (isAgentPaused) {
-        handleContinue();
-      }
       handleNewGoal(nameInput, goalInput);
     }
-  };
-
-  const handleStopAgent = () => {
-    agent?.stopAgent();
-    updateIsAgentStopped();
   };
 
   const handleVisibleWindowClick = (visibleWindow: "Chat" | "Tasks") => {
@@ -171,31 +121,9 @@ const Home: NextPage = () => {
     setMobileVisibleWindow(visibleWindow);
   };
 
-  const shouldShowSave =
-    status === "authenticated" && isAgentStopped && messages.length && !hasSaved;
+  const shouldShowSave = status === "authenticated" && messages.length && !hasSaved;
 
-  const firstButton =
-    isAgentPaused && !isAgentStopped ? (
-      <Button ping disabled={!isAgentPaused} onClick={handleContinue}>
-        <FaPlay size={20} />
-        <span className="ml-2">{i18n.t("CONTINUE", { ns: "common" })}</span>
-      </Button>
-    ) : (
-      <Button
-        ping={!disableDeployAgent}
-        disabled={disableDeployAgent}
-        onClick={() => handleNewGoal(nameInput, goalInput)}
-      >
-        {agent == null ? (
-          i18n.t("BUTTON_DEPLOY_AGENT", { ns: "indexPage" })
-        ) : (
-          <>
-            <VscLoading className="animate-spin" size={20} />
-            <span className="ml-2">{i18n.t("RUNNING", { ns: "common" })}</span>
-          </>
-        )}
-      </Button>
-    );
+  const isAgentStopped = agent?.isRunning === false; //TODO: Agent is stopped
 
   return (
     <DefaultLayout>
@@ -263,7 +191,7 @@ const Home: NextPage = () => {
             </div>
             <Expand className="flex w-full flex-row">
               <ChatWindow
-                messages={messages}
+                messages={tasks}
                 title="AgentGPT"
                 onSave={
                   shouldShowSave
@@ -278,12 +206,11 @@ const Home: NextPage = () => {
                     : undefined
                 }
                 scrollToBottom
-                displaySettings
                 openSorryDialog={() => setShowSorryDialog(true)}
                 setAgentRun={setAgentRun}
                 visibleOnMobile={mobileVisibleWindow === "Chat"}
               />
-              <TaskWindow visibleOnMobile={mobileVisibleWindow === "Tasks"} />
+              {/*<TaskWindow visibleOnMobile={mobileVisibleWindow === "Tasks"} />*/}
             </Expand>
 
             <div className="flex w-full flex-col gap-2 md:m-4">
@@ -332,10 +259,23 @@ const Home: NextPage = () => {
               </Expand>
             </div>
             <Expand delay={1.4} className="flex gap-2">
-              {firstButton}
+              <Button
+                ping={!disableDeployAgent}
+                disabled={disableDeployAgent}
+                onClick={() => handleNewGoal(nameInput, goalInput)}
+              >
+                {agent == null ? (
+                  i18n.t("BUTTON_DEPLOY_AGENT", { ns: "indexPage" })
+                ) : (
+                  <>
+                    <VscLoading className="animate-spin" size={20} />
+                    <span className="ml-2">{i18n.t("RUNNING", { ns: "common" })}</span>
+                  </>
+                )}
+              </Button>
               <Button
                 disabled={agent === null}
-                onClick={handleStopAgent}
+                onClick={stopAgent}
                 enabledClassName={"bg-red-600 hover:bg-red-400"}
               >
                 {!isAgentStopped && agent === null ? (
